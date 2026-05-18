@@ -19,8 +19,13 @@ app.use(cors({
     if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) {
       return callback(null, true);
     }
+    // If no FRONTEND_URL set, allow all origins
+    const frontendUrl = process.env.FRONTEND_URL;
+    if (!frontendUrl || frontendUrl === '*') {
+      return callback(null, true);
+    }
     // In production allow the configured FRONTEND_URL
-    const allowed = (process.env.FRONTEND_URL || '').split(',').map(o => o.trim()).filter(Boolean);
+    const allowed = frontendUrl.split(',').map(o => o.trim()).filter(Boolean);
     if (allowed.some(o => origin === o || origin.startsWith(o))) {
       return callback(null, true);
     }
