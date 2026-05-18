@@ -8,10 +8,10 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Free models in priority order — if one fails/rate-limits, next is tried
 const FREE_MODELS = [
+  'deepseek/deepseek-v4-flash:free',
+  'openai/gpt-oss-20b:free',
   'meta-llama/llama-3.3-70b-instruct:free',
-  'google/gemma-3-27b-it:free',
-  'meta-llama/llama-3.2-3b-instruct:free',
-  'nousresearch/hermes-3-llama-3.1-405b:free'
+  'meta-llama/llama-3.2-3b-instruct:free'
 ];
 
 async function callOpenRouter(systemPrompt, userPrompt) {
