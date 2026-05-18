@@ -8,7 +8,6 @@ const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Free models in priority order
 const FREE_MODELS = [
-  'openai/gpt-4o-mini',            // Best: cheap paid model, no rate limits (~$0.15/1M tokens)
   'deepseek/deepseek-v4-flash:free',
   'openai/gpt-oss-20b:free',
   'meta-llama/llama-3.3-70b-instruct:free',
