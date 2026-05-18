@@ -57,9 +57,18 @@ export default function App() {
     try {
       const res = await aiShortlist(jobData);
       setAiResults(res.data);
-      toast.success('AI analysis complete!');
+      if (res.data.results?.length > 0) {
+        toast.success('AI analysis complete!');
+      } else {
+        toast(res.data.summary || 'No matching candidates found', { icon: 'ℹ️' });
+      }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'AI shortlisting failed');
+      const errData = err.response?.data;
+      if (errData) {
+        // Show error inside AIResults component
+        setAiResults(errData);
+      }
+      toast.error(errData?.hint || errData?.error || 'AI shortlisting failed');
     } finally {
       setAiLoading(false);
     }

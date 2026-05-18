@@ -6,13 +6,15 @@ const Candidate = require('../models/Candidate');
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-// Free models in priority order — if one fails/rate-limits, next is tried
+// Free models in priority order
 const FREE_MODELS = [
   'deepseek/deepseek-v4-flash:free',
   'openai/gpt-oss-20b:free',
   'meta-llama/llama-3.3-70b-instruct:free',
   'meta-llama/llama-3.2-3b-instruct:free'
 ];
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function callOpenRouter(systemPrompt, userPrompt) {
   let lastError = null;
@@ -39,17 +41,24 @@ async function callOpenRouter(systemPrompt, userPrompt) {
       });
 
       if (response.status === 429 || response.status === 503) {
-        // Rate limited or unavailable — try next model
         const errText = await response.text();
-        lastError = new Error(`Model ${model} returned ${response.status}: ${errText}`);
-        console.warn(`Model ${model} unavailable (${response.status}), trying next...`);
+        // Parse retry-after if available
+        let retryAfter = 5000;
+        try {
+          const parsed = JSON.parse(errText);
+          const seconds = parsed?.error?.metadata?.retry_after_seconds;
+          if (seconds) retryAfter = Math.min(seconds * 1000, 10000); // cap at 10s
+        } catch {}
+        lastError = new Error(`Model ${model} rate limited`);
+        console.warn(`Model ${model} rate limited, waiting ${retryAfter}ms then trying next...`);
+        await sleep(retryAfter);
         continue;
       }
 
       if (!response.ok) {
         const errText = await response.text();
-        lastError = new Error(`OpenRouter API error: ${response.status} - ${errText}`);
-        console.warn(`Model ${model} error: ${response.status}, trying next...`);
+        lastError = new Error(`OpenRouter error ${response.status}: ${errText}`);
+        console.warn(`Model ${model} error ${response.status}, trying next...`);
         continue;
       }
 
@@ -64,15 +73,15 @@ async function callOpenRouter(systemPrompt, userPrompt) {
       return { content, model };
     } catch (err) {
       lastError = err;
-      console.warn(`Model ${model} threw error: ${err.message}, trying next...`);
+      console.warn(`Model ${model} threw: ${err.message}, trying next...`);
     }
   }
 
-  throw lastError || new Error('All AI models failed');
+  throw lastError || new Error('All AI models are currently rate limited. Please wait 30 seconds and try again.');
 }
 
 function extractJSON(text) {
-  // Try to extract JSON from markdown code blocks first
+  // Try markdown code block first
   const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (codeBlock) {
     try { return JSON.parse(codeBlock[1]); } catch {}
@@ -86,7 +95,7 @@ function extractJSON(text) {
   return null;
 }
 
-// POST /api/ai/shortlist - AI-based candidate shortlisting
+// POST /api/ai/shortlist
 router.post('/shortlist', async (req, res) => {
   try {
     const { requiredSkills, minExperience, preferredSkills, jobTitle, jobDescription } = req.body;
@@ -99,16 +108,20 @@ router.post('/shortlist', async (req, res) => {
     const candidates = await Candidate.find({ experience: { $gte: minExp } });
 
     if (candidates.length === 0) {
-      return res.json({ message: 'No candidates meet the minimum experience requirement', results: [] });
+      return res.json({
+        summary: 'No candidates meet the minimum experience requirement.',
+        results: [],
+        model: null
+      });
     }
 
     const candidateList = candidates.map((c, i) =>
       `${i + 1}. ${c.name} | Skills: ${c.skills.join(', ')} | Experience: ${c.experience} years | Bio: ${c.bio || 'N/A'}`
     ).join('\n');
 
-    const systemPrompt = 'You are an expert HR recruiter AI assistant. Always respond with valid JSON only — no markdown, no explanation outside the JSON.';
+    const systemPrompt = 'You are an expert HR recruiter. Respond with valid JSON only — no markdown, no text outside the JSON object.';
 
-    const userPrompt = `Analyze these candidates for the job and return ONLY a JSON object.
+    const userPrompt = `Rank these candidates for the job. Return ONLY a JSON object, nothing else.
 
 Job:
 - Title: ${jobTitle || 'Software Developer'}
@@ -120,39 +133,38 @@ Job:
 Candidates:
 ${candidateList}
 
-Return this exact JSON structure:
+JSON format to return:
 {
   "rankings": [
     {
       "rank": 1,
-      "name": "exact candidate name from list",
+      "name": "exact name from list",
       "matchScore": 85,
       "matchLevel": "High",
-      "strengths": "key strengths for this role",
-      "weaknesses": "skill gaps or concerns",
-      "recommendation": "concise hiring recommendation",
+      "strengths": "key strengths",
+      "weaknesses": "gaps or concerns",
+      "recommendation": "hiring recommendation",
       "interviewQuestions": ["Q1", "Q2", "Q3"]
     }
   ],
-  "summary": "2-3 sentence overall summary"
+  "summary": "2-3 sentence summary"
 }
 
-matchScore: 0-100. matchLevel: "High" (>=75), "Partial" (40-74), "Low" (<40). Rank best to worst.`;
+Rules: matchScore 0-100, matchLevel is "High" (>=75), "Partial" (40-74), or "Low" (<40). Sort best to worst.`;
 
     const { content, model } = await callOpenRouter(systemPrompt, userPrompt);
-
     const parsed = extractJSON(content);
 
     if (!parsed) {
+      // Return raw so frontend can at least show something
       return res.json({
+        summary: 'AI responded but result could not be parsed.',
         rawResponse: content,
-        message: 'AI responded but JSON could not be parsed. Raw response shown.',
         results: [],
         model
       });
     }
 
-    // Merge AI rankings with candidate DB data
     const enriched = (parsed.rankings || []).map(ranking => {
       const candidate = candidates.find(c =>
         c.name.toLowerCase().trim() === ranking.name.toLowerCase().trim()
@@ -167,11 +179,14 @@ matchScore: 0-100. matchLevel: "High" (>=75), "Partial" (40-74), "Low" (<40). Ra
     });
   } catch (err) {
     console.error('AI shortlist error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(503).json({
+      error: err.message,
+      hint: 'All free AI models are rate limited. Wait 30 seconds and try again.'
+    });
   }
 });
 
-// POST /api/ai/interview-questions - Generate interview questions for a candidate
+// POST /api/ai/interview-questions
 router.post('/interview-questions', async (req, res) => {
   try {
     const { candidateId, jobTitle, requiredSkills } = req.body;
@@ -187,7 +202,7 @@ router.post('/interview-questions', async (req, res) => {
 
     const systemPrompt = 'You are an expert technical interviewer. Respond with valid JSON only.';
 
-    const userPrompt = `Generate 5 targeted interview questions for this candidate.
+    const userPrompt = `Generate 5 interview questions for this candidate. Return ONLY JSON.
 
 Candidate: ${candidate.name}
 Skills: ${candidate.skills.join(', ')}
@@ -196,31 +211,27 @@ Bio: ${candidate.bio || 'N/A'}
 Job Title: ${jobTitle || 'Software Developer'}
 Required Skills: ${(requiredSkills || []).join(', ') || 'General'}
 
-Return ONLY this JSON:
+JSON format:
 {
   "questions": [
-    { "question": "Question text here", "category": "Technical", "difficulty": "Medium" }
+    { "question": "text", "category": "Technical", "difficulty": "Medium" }
   ]
-}
-
-category options: Technical, Behavioral, Situational
-difficulty options: Easy, Medium, Hard`;
+}`;
 
     const { content, model } = await callOpenRouter(systemPrompt, userPrompt);
     const parsed = extractJSON(content);
 
-    if (!parsed) {
-      return res.json({ rawResponse: content, questions: [] });
-    }
-
     res.json({
       candidate: { name: candidate.name, skills: candidate.skills },
-      questions: parsed.questions || [],
+      questions: parsed?.questions || [],
       model
     });
   } catch (err) {
     console.error('Interview questions error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(503).json({
+      error: err.message,
+      hint: 'All free AI models are rate limited. Wait 30 seconds and try again.'
+    });
   }
 });
 

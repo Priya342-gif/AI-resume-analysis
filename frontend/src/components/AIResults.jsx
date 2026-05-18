@@ -135,6 +135,28 @@ function CandidateAICard({ result, index, jobRequirements }) {
 export default function AIResults({ data, jobRequirements }) {
   if (!data) return null;
 
+  // Handle rate limit / error case
+  if (data.error || (data.results && data.results.length === 0 && !data.summary?.includes('No candidates'))) {
+    return (
+      <div className="card" style={{ borderColor: '#f87171' }}>
+        <div className="card-title">
+          <Bot size={18} color="#f87171" />
+          AI Shortlisting
+        </div>
+        <div style={{ background: '#450a0a', border: '1px solid #f87171', borderRadius: 8, padding: '1rem', color: '#fca5a5', lineHeight: 1.6 }}>
+          <strong>⚠️ {data.error || 'No results returned'}</strong>
+          {data.hint && <div style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}>{data.hint}</div>}
+          {data.rawResponse && (
+            <details style={{ marginTop: '0.75rem' }}>
+              <summary style={{ cursor: 'pointer', fontSize: '0.8rem' }}>Show raw AI response</summary>
+              <pre style={{ marginTop: '0.5rem', fontSize: '0.75rem', whiteSpace: 'pre-wrap', color: '#94a3b8' }}>{data.rawResponse}</pre>
+            </details>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="card">
