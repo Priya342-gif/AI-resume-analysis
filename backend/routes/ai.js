@@ -42,15 +42,15 @@ async function callOpenRouter(systemPrompt, userPrompt) {
 
       if (response.status === 429 || response.status === 503) {
         const errText = await response.text();
-        // Parse retry-after if available
-        let retryAfter = 5000;
+        // Parse retry-after if available, wait that long then try next model
+        let retryAfter = 15000;
         try {
           const parsed = JSON.parse(errText);
           const seconds = parsed?.error?.metadata?.retry_after_seconds;
-          if (seconds) retryAfter = Math.min(seconds * 1000, 10000); // cap at 10s
+          if (seconds) retryAfter = Math.min(seconds * 1000 + 2000, 62000); // wait full retry window
         } catch {}
         lastError = new Error(`Model ${model} rate limited`);
-        console.warn(`Model ${model} rate limited, waiting ${retryAfter}ms then trying next...`);
+        console.warn(`Model ${model} rate limited, waiting ${retryAfter}ms...`);
         await sleep(retryAfter);
         continue;
       }

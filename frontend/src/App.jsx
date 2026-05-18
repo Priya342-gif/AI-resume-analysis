@@ -176,7 +176,12 @@ export default function App() {
             {aiLoading && (
               <div className="loading-spinner">
                 <div className="spinner" style={{ borderTopColor: '#a78bfa' }} />
-                AI is analyzing candidates...
+                <div>
+                  <div>AI is analyzing candidates...</div>
+                  <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.25rem' }}>
+                    This may take up to 60 seconds if models are busy
+                  </div>
+                </div>
               </div>
             )}
             {aiResults && (
