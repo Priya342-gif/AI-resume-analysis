@@ -3,30 +3,41 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
-const BASE = import.meta.env.VITE_API_URL ?? '';
+// Vite bakes VITE_API_URL at build time — must be set before building
+const BASE = import.meta.env.VITE_API_URL || '';
+
+// Create a dedicated axios instance for auth (same base as api.js)
+const authAxios = axios.create({ baseURL: BASE });
+
+// Keep auth token in sync on all requests
+authAxios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  // Set axios default auth header whenever token changes
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       localStorage.setItem('token', token);
+      // Also set on global axios for any direct calls
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
-      delete axios.defaults.headers.common['Authorization'];
       localStorage.removeItem('token');
+      delete axios.defaults.headers.common['Authorization'];
     }
   }, [token]);
 
-  // On mount, verify token and load user
+  // On mount, verify token
   useEffect(() => {
     const verify = async () => {
       if (!token) { setLoading(false); return; }
       try {
-        const res = await axios.get(`${BASE}/api/auth/me`);
+        const res = await authAxios.get('/api/auth/me');
         setUser(res.data.user);
       } catch {
         setToken(null);
@@ -39,14 +50,14 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signup = async (name, email, password) => {
-    const res = await axios.post(`${BASE}/api/auth/signup`, { name, email, password });
+    const res = await authAxios.post('/api/auth/signup', { name, email, password });
     setToken(res.data.token);
     setUser(res.data.user);
     return res.data;
   };
 
   const login = async (email, password) => {
-    const res = await axios.post(`${BASE}/api/auth/login`, { email, password });
+    const res = await authAxios.post('/api/auth/login', { email, password });
     setToken(res.data.token);
     setUser(res.data.user);
     return res.data;
