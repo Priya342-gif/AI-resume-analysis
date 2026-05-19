@@ -9,7 +9,6 @@ const CandidateSchema = new mongoose.Schema({
   email: {
     type: String,
     required: [true, 'Email is required'],
-    unique: true,
     trim: true,
     lowercase: true
   },
@@ -31,10 +30,18 @@ const CandidateSchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
+
+// Email unique per user (not globally)
+CandidateSchema.index({ email: 1, createdBy: 1 }, { unique: true });
 
 module.exports = mongoose.model('Candidate', CandidateSchema);

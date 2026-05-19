@@ -125,7 +125,10 @@ router.post('/shortlist', async (req, res) => {
     }
 
     const minExp = Number(minExperience) || 0;
-    const candidates = await Candidate.find({ experience: { $gte: minExp } });
+    const candidates = await Candidate.find({
+      createdBy: req.user._id,
+      experience: { $gte: minExp }
+    });
 
     if (candidates.length === 0) {
       return res.json({
@@ -215,7 +218,10 @@ router.post('/interview-questions', async (req, res) => {
       return res.status(400).json({ error: 'candidateId is required' });
     }
 
-    const candidate = await Candidate.findById(candidateId);
+    const candidate = await Candidate.findOne({
+      _id: candidateId,
+      createdBy: req.user._id
+    });
     if (!candidate) {
       return res.status(404).json({ error: 'Candidate not found' });
     }

@@ -15,7 +15,10 @@ router.post('/', async (req, res) => {
     const normalizedRequired = requiredSkills.map(s => s.toLowerCase().trim());
     const normalizedPreferred = (preferredSkills || []).map(s => s.toLowerCase().trim());
 
-    const candidates = await Candidate.find({ experience: { $gte: minExp } });
+    const candidates = await Candidate.find({
+      createdBy: req.user._id,
+      experience: { $gte: minExp }
+    });
 
     const ranked = candidates.map(candidate => {
       const candidateSkills = candidate.skills.map(s => s.toLowerCase().trim());
