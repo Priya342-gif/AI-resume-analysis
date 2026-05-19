@@ -81,17 +81,37 @@ async function callOpenRouter(systemPrompt, userPrompt) {
 }
 
 function extractJSON(text) {
-  // Try markdown code block first
-  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (!text) return null;
+
+  // 1. Try markdown code block ```json ... ```
+  const jsonBlock = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (jsonBlock) {
+    try { return JSON.parse(jsonBlock[1]); } catch {}
+  }
+
+  // 2. Try any code block ``` ... ```
+  const codeBlock = text.match(/```\s*([\s\S]*?)\s*```/);
   if (codeBlock) {
     try { return JSON.parse(codeBlock[1]); } catch {}
   }
-  // Try raw JSON object
-  const jsonStart = text.indexOf('{');
-  const jsonEnd = text.lastIndexOf('}');
-  if (jsonStart !== -1 && jsonEnd !== -1) {
-    try { return JSON.parse(text.slice(jsonStart, jsonEnd + 1)); } catch {}
+
+  // 3. Try direct parse
+  try { return JSON.parse(text.trim()); } catch {}
+
+  // 4. Find outermost { ... } — handles text before/after JSON
+  let depth = 0, start = -1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (text[i] === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try { return JSON.parse(text.slice(start, i + 1)); } catch {}
+      }
+    }
   }
+
   return null;
 }
 
@@ -156,9 +176,9 @@ Rules: matchScore 0-100, matchLevel is "High" (>=75), "Partial" (40-74), or "Low
     const parsed = extractJSON(content);
 
     if (!parsed) {
-      // Return raw so frontend can at least show something
+      console.error('JSON parse failed. Raw content:', content.substring(0, 500));
       return res.json({
-        summary: 'AI responded but result could not be parsed.',
+        summary: 'AI responded but result could not be parsed. Try again.',
         rawResponse: content,
         results: [],
         model
