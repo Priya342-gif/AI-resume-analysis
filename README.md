@@ -65,3 +65,9 @@ npm run dev
 | POST | `/api/ai/shortlist` | AI-powered shortlisting |
 | POST | `/api/ai/interview-questions` | Generate interview questions |
 | GET | `/health` | Health check |
+
+
+## 🚀 Deployment
+
+- **Frontend:** https://ai-resume-analysis-1-t5df.onrender.com
+- **Backend:** https://ai-resume-analysis-gg8k.onrender.com
